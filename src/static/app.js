@@ -40,6 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let searchQuery = "";
   let currentDay = "";
   let currentTimeRange = "";
+  let sharedActivityPending = true;
 
   // Authentication state
   let currentUser = null;
@@ -404,6 +405,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Apply search and filter, and handle weekend filter in client
       displayFilteredActivities();
+
+      if (sharedActivityPending) {
+        const sharedCard = document.getElementById(window.location.hash.slice(1));
+        if (sharedCard && sharedCard.classList.contains("activity-card")) {
+          sharedCard.scrollIntoView({ block: "center" });
+          sharedCard.focus({ preventScroll: true });
+        }
+        sharedActivityPending = false;
+      }
     } catch (error) {
       activitiesList.innerHTML =
         "<p>Failed to load activities. Please try again later.</p>";
@@ -474,10 +484,94 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function createSharingControls(name) {
+    const shareUrl = new URL(window.location.pathname, window.location.origin);
+    shareUrl.hash = `activity-${encodeURIComponent(name)}`;
+    const text = `Join me at ${name} at Mergington High School!`;
+    const sharing = document.createElement("div");
+    sharing.className = "activity-sharing";
+    sharing.setAttribute("role", "group");
+    sharing.setAttribute("aria-label", `Share ${name}`);
+
+    const label = document.createElement("span");
+    label.textContent = "Share with friends:";
+    sharing.appendChild(label);
+
+    const buttons = document.createElement("div");
+    buttons.className = "share-buttons";
+    const destinations = [
+      ["WhatsApp", "https://wa.me/", { text: `${text} ${shareUrl.href}` }],
+      ["Facebook", "https://www.facebook.com/sharer/sharer.php", { u: shareUrl.href }],
+      ["X", "https://twitter.com/intent/tweet", { text, url: shareUrl.href }],
+    ];
+    destinations.forEach(([platform, endpoint, parameters]) => {
+      const link = document.createElement("a");
+      const destination = new URL(endpoint);
+      destination.search = new URLSearchParams(parameters).toString();
+      link.href = destination.href;
+      link.textContent = platform;
+      link.className = "share-button";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.setAttribute("aria-label", `Share ${name} on ${platform} (opens in a new tab)`);
+      buttons.appendChild(link);
+    });
+
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "share-button";
+    copyButton.textContent = "Copy link";
+    copyButton.setAttribute("aria-label", `Copy link to ${name}`);
+    buttons.appendChild(copyButton);
+    sharing.appendChild(buttons);
+
+    const manualLink = document.createElement("input");
+    manualLink.type = "text";
+    manualLink.readOnly = true;
+    manualLink.value = shareUrl.href;
+    manualLink.className = "share-link hidden";
+    manualLink.setAttribute("aria-label", `Link to ${name}`);
+    sharing.appendChild(manualLink);
+
+    const status = document.createElement("span");
+    status.className = "share-status";
+    status.setAttribute("role", "status");
+    sharing.appendChild(status);
+
+    function showManualLink() {
+      manualLink.classList.remove("hidden");
+      manualLink.focus();
+      manualLink.select();
+      status.textContent = "Please copy the selected link to share it.";
+    }
+
+    copyButton.addEventListener("click", async () => {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        showManualLink();
+        return;
+      }
+      copyButton.disabled = true;
+      try {
+        await navigator.clipboard.writeText(shareUrl.href);
+        manualLink.classList.add("hidden");
+        status.textContent = "Link copied!";
+      } catch (error) {
+        console.error("Unable to copy activity link:", error);
+        showManualLink();
+      } finally {
+        copyButton.disabled = false;
+      }
+    });
+
+    return sharing;
+  }
+
   // Function to render a single activity card
   function renderActivityCard(name, details) {
     const activityCard = document.createElement("div");
     activityCard.className = "activity-card";
+    activityCard.id = `activity-${encodeURIComponent(name)}`;
+    activityCard.tabIndex = -1;
 
     // Calculate spots and capacity
     const totalSpots = details.max_participants;
@@ -589,6 +683,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    activityCard.appendChild(createSharingControls(name));
     activitiesList.appendChild(activityCard);
   }
 
